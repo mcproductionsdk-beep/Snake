@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Snake</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#080a17;--panel:#11152b;--cyan:#42f5e9;--pink:#ff4fd8;--yellow:#ffe66d;--green:#63ff8b;--red:#ff5b6e;--text:#f4f7ff}
+body{margin:0;min-height:100vh;background:radial-gradient(circle at top,#1a1740 0,#090b18 55%,#050610 100%);color:var(--text);font-family:"Courier New",monospace}
+.shell{width:min(98vw,1200px);margin:18px auto;padding:18px;border:3px solid var(--cyan);border-radius:16px;background:rgba(8,10,25,.96);box-shadow:0 0 22px #42f5e955}
+.title{text-align:center;font-size:clamp(28px,4vw,44px);font-weight:900;letter-spacing:5px;color:var(--pink);text-shadow:0 0 12px #ff4fd8;margin-bottom:14px}
+.screen{display:none}.screen.active{display:block}
+.setup-grid{display:grid;grid-template-columns:1.4fr .8fr;gap:18px}
+.card{background:#11152b;border:2px solid #353d77;border-radius:12px;padding:16px}
+h2{margin:0 0 10px;color:var(--yellow);font-size:20px}
+label{display:block;font-weight:bold;margin:12px 0 6px}
+textarea,select{width:100%;background:#090d20;color:#fff;border:2px solid #353d77;border-radius:8px;padding:11px;font:15px "Courier New",monospace}
+textarea{height:300px;resize:vertical;line-height:1.45}
+.help{font-size:12px;line-height:1.5;opacity:.8}
+.example{background:#090d20;padding:10px;border-radius:8px;line-height:1.6;color:#cdd4ff}
+button{border:2px solid var(--cyan);border-radius:9px;background:#121731;color:var(--cyan);font:bold 16px "Courier New",monospace;padding:10px 18px;cursor:pointer}
+button:active{transform:scale(.98)}
+.primary{background:var(--green);border-color:var(--green);color:#08120b}
+.yellow{background:var(--yellow);border-color:var(--yellow);color:#171200}
+.pink{border-color:var(--pink);color:var(--pink)}
+.big{width:100%;font-size:19px;padding:14px;margin-top:14px}
+.error{min-height:20px;color:var(--red);font-size:13px;margin-top:8px}
+.hud{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin:5px 0 10px;font-weight:bold}
+.hud .right{text-align:right}
+#target{padding:11px 20px;text-align:center;border:2px solid var(--yellow);border-radius:10px;background:#17142d;font-size:clamp(18px,2.2vw,28px);box-shadow:0 0 12px #ffe66d44}
+#target strong{color:var(--yellow)}
+#wrap{position:relative;width:100%;aspect-ratio:2.05/1;min-height:470px}
+canvas{width:100%;height:100%;display:block;border:2px solid #353d77;border-radius:8px;background:#080b18}
+#message{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;pointer-events:none;font-size:clamp(24px,4vw,42px);font-weight:900;text-shadow:0 2px 8px #000}
+.game-actions{display:flex;justify-content:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.game-actions button{min-width:170px}
+.small-note{text-align:center;opacity:.7;font-size:11px;margin-top:8px}
+@media(max-width:760px){.setup-grid{grid-template-columns:1fr}#wrap{aspect-ratio:1.35/1;min-height:0}.shell{margin:5px auto;padding:10px}.hud{grid-template-columns:1fr 1fr}.hud #target{grid-column:1/-1;grid-row:1}.game-actions button{min-width:0;flex:1}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="title">WORD SNAKE</div>
+
+  <section id="setupScreen" class="screen active">
+    <div class="setup-grid">
+      <div class="card">
+        <h2>WORD LIST</h2>
+        <div class="help">Paste pairs exactly like a Quizlet export: one pair per line. Separate the prompt and answer with a TAB. Commas also work.</div>
+        <textarea id="wordInput">apple	manzana
+dog	perro
+house	casa
+book	libro
+water	agua
+cat	gato
+school	escuela
+friend	amigo
+food	comida
+music	música
+city	ciudad
+family	familia
+table	mesa
+sun	sol
+moon	luna
+car	coche
+red	rojo
+green	verde
+happy	feliz
+beach	playa</textarea>
+        <div id="setupError" class="error"></div>
+      </div>
+      <div class="card">
+        <h2>GAME SETTINGS</h2>
+        <label for="speechLanguage">Language to pronounce</label>
+        <select id="speechLanguage">
+          <option value="es-ES" selected>Spanish</option>
+          <option value="da-DK">Danish</option>
+          <option value="de-DE">German</option>
+          <option value="en-US">English</option>
+          <option value="fr-FR">French</option>
+          <option value="it-IT">Italian</option>
+          <option value="pt-PT">Portuguese</option>
+          <option value="sv-SE">Swedish</option>
+          <option value="nl-NL">Dutch</option>
+          <option value="pl-PL">Polish</option>
+        </select>
+        <div class="help" style="margin-top:8px">The <b>second</b> word in each pair is the word shown on the board and pronounced when eaten.</div>
+        <label>Example</label>
+        <div class="example">apple → manzana<br>dog → perro<br>house → casa</div>
+        <button id="playBtn" class="primary big" type="button">PLAY</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="gameScreen" class="screen">
+    <div class="hud">
+      <span>SCORE: <b id="score">0</b> &nbsp; LIVES: <b id="lives">❤❤❤</b></span>
+      <div id="target">FIND: <strong>APPLE</strong></div>
+      <span class="right">WORDS: <b id="wordCount">0</b></span>
+    </div>
+    <div id="wrap">
+      <canvas id="board"></canvas>
+      <div id="message"></div>
+    </div>
+    <div class="game-actions">
+      <button id="pauseBtn" class="yellow" type="button">PAUSE</button>
+      <button id="restartBtn" type="button">RESTART</button>
+      <button id="menuBtn" class="pink" type="button">MAIN MENU</button>
+    </div>
+    <div class="small-note">Arrow keys / WASD to move · Spacebar to pause/resume</div>
+  </section>
+</div>
+
+<script>
+const setupScreen=document.getElementById("setupScreen"),gameScreen=document.getElementById("gameScreen");
+const canvas=document.getElementById("board"),ctx=canvas.getContext("2d");
+const scoreEl=document.getElementById("score"),livesEl=document.getElementById("lives"),targetEl=document.getElementById("target");
+const wordCountEl=document.getElementById("wordCount"),messageEl=document.getElementById("message");
+const input=document.getElementById("wordInput"),languageSelect=document.getElementById("speechLanguage"),errorEl=document.getElementById("setupError");
+const COLS=30,ROWS=16;
+let cellW=1,cellH=1,vocabulary=[],speechLang="es-ES",snake=[],words=[],target=null;
+let dir={x:1,y:0},nextDir={x:1,y:0},score=0,lives=3,running=false,paused=false,timer=null,speed=205,audioCtx=null;
+
+function parseWords(){
+  const lines=input.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),out=[];
+  for(const line of lines){
+    let parts=line.includes("\t")?line.split("\t"):line.split(",");
+    parts=parts.map(s=>s.trim()).filter(Boolean);
+    if(parts.length>=2)out.push([parts[0],parts.slice(1).join(" ")]);
+  }
+  return out;
+}
+function showScreen(which){
+  setupScreen.classList.toggle("active",which==="setup");
+  gameScreen.classList.toggle("active",which==="game");
+  if(which==="game")setTimeout(resize,0);
+}
+function getAudio(){
+  if(!window.AudioContext&&!window.webkitAudioContext)return null;
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==="suspended")audioCtx.resume();
+  return audioCtx;
+}
+function tone(freq,start,duration,type="square",volume=.08,endFreq=null){
+  const ac=getAudio(); if(!ac)return;
+  const o=ac.createOscillator(),g=ac.createGain(),now=ac.currentTime;
+  o.type=type;o.frequency.setValueAtTime(freq,now+start);
+  if(endFreq)o.frequency.exponentialRampToValueAtTime(endFreq,now+start+duration);
+  g.gain.setValueAtTime(.0001,now+start);g.gain.exponentialRampToValueAtTime(volume,now+start+.012);
+  g.gain.exponentialRampToValueAtTime(.0001,now+start+duration);
+  o.connect(g);g.connect(ac.destination);o.start(now+start);o.stop(now+start+duration+.03);
+}
+function correctSound(){tone(440,0,.08);tone(660,.07,.10);tone(880,.16,.14)}
+function wrongSound(){tone(180,0,.17,"sawtooth",.07,105);tone(115,.15,.19,"square",.05,72)}
+function collisionSound(){tone(145,0,.13,"sawtooth",.06,75)}
+function speak(text){
+  if(!("speechSynthesis" in window))return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang=speechLang;u.rate=.82;
+  const base=speechLang.split("-")[0].toLowerCase(),voices=speechSynthesis.getVoices();
+  const voice=voices.find(v=>v.lang&&v.lang.toLowerCase()===speechLang.toLowerCase())||voices.find(v=>v.lang&&v.lang.toLowerCase().startsWith(base));
+  if(voice)u.voice=voice;speechSynthesis.speak(u);
+}
+function randomCell(){
+  return{x:Math.floor(Math.random()*(COLS-4))+2,y:Math.floor(Math.random()*(ROWS-2))+1};
+}
+function occupied(p,ignoreIndex=-1){
+  return snake.some(s=>s.x===p.x&&s.y===p.y)||words.some((w,i)=>i!==ignoreIndex&&w.x===p.x&&w.y===p.y);
+}
+function placeWord(pair,correct=false,ignoreIndex=-1){
+  let p,tries=0;do{p=randomCell();tries++}while(occupied(p,ignoreIndex)&&tries<500);
+  return{x:p.x,y:p.y,prompt:pair[0],answer:pair[1],correct};
+}
+function chooseTarget(excludeAnswer=null){
+  let choices=vocabulary.filter(v=>v[1]!==excludeAnswer);
+  if(!choices.length)choices=vocabulary;
+  return choices[Math.floor(Math.random()*choices.length)];
+}
+function initializeBoard(){
+  target=chooseTarget();
+  words=[];
+  const count=Math.min(7,vocabulary.length);
+  const used=new Set([target[1]]);
+  words.push(placeWord(target,true));
+  const shuffled=[...vocabulary].sort(()=>Math.random()-.5);
+  for(const pair of shuffled){
+    if(words.length>=count)break;
+    if(used.has(pair[1]))continue;
+    used.add(pair[1]);words.push(placeWord(pair,false));
+  }
+  targetEl.innerHTML=`FIND: <strong>${escapeHtml(target[0].toUpperCase())}</strong>`;
+}
+function replaceOnlyEatenWord(index,eatenPair){
+  const oldAnswer=eatenPair.answer;
+  let candidates=vocabulary.filter(v=>!words.some((w,i)=>i!==index&&w.answer===v[1])&&v[1]!==oldAnswer);
+  if(!candidates.length)candidates=vocabulary;
+  const replacement=candidates[Math.floor(Math.random()*candidates.length)];
+  words[index]=placeWord(replacement,false,index);
+
+  // The next target is one of the words that is ALREADY on the board.
+  // This preserves every other word and position.
+  const possible=words.map((w,i)=>({w,i})).filter(x=>x.i!==index || words.length===1);
+  const picked=possible[Math.floor(Math.random()*possible.length)];
+  words.forEach(w=>w.correct=false);
+  picked.w.correct=true;
+  target=vocabulary.find(v=>v[1]===picked.w.answer)||[picked.w.prompt,picked.w.answer];
+  targetEl.innerHTML=`FIND: <strong>${escapeHtml(picked.w.prompt.toUpperCase())}</strong>`;
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function resetSnake(){snake=[{x:7,y:8},{x:6,y:8},{x:5,y:8}];dir=nextDir={x:1,y:0}}
+function startGame(){
+  vocabulary=parseWords();
+  if(vocabulary.length<4){errorEl.textContent="Add at least 4 valid word pairs.";return}
+  errorEl.textContent="";speechLang=languageSelect.value;getAudio();
+  clearTimeout(timer);score=0;lives=3;speed=205;paused=false;running=true;
+  scoreEl.textContent=score;livesEl.textContent="❤".repeat(lives);wordCountEl.textContent=vocabulary.length;
+  document.getElementById("pauseBtn").textContent="PAUSE";resetSnake();initializeBoard();showScreen("game");messageEl.style.display="none";loop();
+}
+function restartGame(){
+  if(!vocabulary.length)return;
+  getAudio();clearTimeout(timer);score=0;lives=3;speed=205;paused=false;running=true;
+  scoreEl.textContent=0;livesEl.textContent="❤❤❤";document.getElementById("pauseBtn").textContent="PAUSE";
+  resetSnake();initializeBoard();messageEl.style.display="none";loop();
+}
+function goMenu(){
+  running=false;paused=false;clearTimeout(timer);if("speechSynthesis"in window)speechSynthesis.cancel();showScreen("setup");
+}
+function loop(){if(!running||paused)return;tick();draw();timer=setTimeout(loop,speed)}
+function flash(text,color){
+  messageEl.textContent=text;messageEl.style.color=color;messageEl.style.display="flex";
+  setTimeout(()=>{if(running&&!paused)messageEl.style.display="none"},600);
+}
+function tick(){
+  dir=nextDir;
+  const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+  if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS||snake.some(s=>s.x===head.x&&s.y===head.y)){loseLife("OUCH!",true);return}
+  snake.unshift(head);
+  const hit=words.findIndex(w=>w.x===head.x&&w.y===head.y);
+  let grow=false;
+  if(hit>=0){
+    const eaten={...words[hit]};
+    if(eaten.correct){
+      grow=true;correctSound();setTimeout(()=>speak(eaten.answer),260);
+      score++;scoreEl.textContent=score;speed=Math.max(95,205-score*5);flash("✓ "+eaten.answer.toUpperCase(),"#63ff8b");
+      replaceOnlyEatenWord(hit,eaten);
+    }else{
+      wrongSound();setTimeout(()=>speak(eaten.answer),300);flash("✕ "+eaten.answer.toUpperCase(),"#ff5b6e");
+      lives--;livesEl.textContent="❤".repeat(Math.max(0,lives));
+      // Wrong word is also replaced, but all other board words remain untouched.
+      const replacementPool=vocabulary.filter(v=>!words.some((w,i)=>i!==hit&&w.answer===v[1]));
+      const replacement=(replacementPool.length?replacementPool:vocabulary)[Math.floor(Math.random()*(replacementPool.length?replacementPool.length:vocabulary.length))];
+      words[hit]=placeWord(replacement,false,hit);
+      if(lives<=0){gameOver();return}
+    }
+  }
+  if(!grow)snake.pop();
+}
+function loseLife(msg,sound){
+  if(sound)collisionSound();lives--;livesEl.textContent="❤".repeat(Math.max(0,lives));flash(msg,"#ff5b6e");
+  if(lives<=0){gameOver();return}resetSnake();
+}
+function gameOver(){
+  running=false;paused=false;clearTimeout(timer);targetEl.innerHTML=`GAME OVER — SCORE: <strong>${score}</strong>`;
+  messageEl.innerHTML="GAME OVER";messageEl.style.color="#ff5b6e";messageEl.style.display="flex";
+}
+function togglePause(){
+  if(!running)return;paused=!paused;clearTimeout(timer);
+  const b=document.getElementById("pauseBtn");b.textContent=paused?"RESUME":"PAUSE";b.blur();
+  if(paused){messageEl.textContent="PAUSED";messageEl.style.color="#ffe66d";messageEl.style.display="flex"}
+  else{messageEl.style.display="none";loop()}
+}
+function setDir(x,y){if(!running||paused)return;if(x===-dir.x&&y===-dir.y)return;nextDir={x,y}}
+function resize(){
+  const r=canvas.getBoundingClientRect();if(!r.width)return;
+  canvas.width=Math.floor(r.width*devicePixelRatio);canvas.height=Math.floor(r.height*devicePixelRatio);
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);cellW=r.width/COLS;cellH=r.height/ROWS;draw();
+}
+function draw(){
+  const r=canvas.getBoundingClientRect(),W=r.width,H=r.height;if(!W)return;
+  ctx.clearRect(0,0,W,H);ctx.strokeStyle="#151a35";ctx.lineWidth=1;
+  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*cellW,0);ctx.lineTo(x*cellW,H);ctx.stroke()}
+  for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*cellH);ctx.lineTo(W,y*cellH);ctx.stroke()}
+  words.forEach(w=>{
+    const cx=(w.x+.5)*cellW,cy=(w.y+.5)*cellH;
+    ctx.font=`bold ${Math.max(11,Math.min(17,cellH*.58))}px Courier New`;ctx.textAlign="center";ctx.textBaseline="middle";
+    const tw=Math.min(ctx.measureText(w.answer).width+14,W*.22);
+    ctx.fillStyle="#1a1735";ctx.strokeStyle="#ff4fd8";ctx.lineWidth=1.5;
+    ctx.fillRect(cx-tw/2,cy-cellH*.39,tw,cellH*.78);ctx.strokeRect(cx-tw/2,cy-cellH*.39,tw,cellH*.78);
+    ctx.fillStyle="#fff";ctx.fillText(w.answer,cx,cy,tw-5);
+  });
+  snake.forEach((s,i)=>{
+    const pad=2;ctx.fillStyle=i===0?"#ffe66d":"#42f5e9";ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=8;
+    ctx.fillRect(s.x*cellW+pad,s.y*cellH+pad,cellW-pad*2,cellH-pad*2);ctx.shadowBlur=0;
+  });
+}
+addEventListener("resize",resize);
+addEventListener("keydown",e=>{
+  if(!gameScreen.classList.contains("active"))return;
+  const k=e.key.toLowerCase();
+  if(e.code==="Space"){e.preventDefault();e.stopPropagation();togglePause();return}
+  if(["arrowup","w"].includes(k)){e.preventDefault();setDir(0,-1)}
+  else if(["arrowdown","s"].includes(k)){e.preventDefault();setDir(0,1)}
+  else if(["arrowleft","a"].includes(k)){e.preventDefault();setDir(-1,0)}
+  else if(["arrowright","d"].includes(k)){e.preventDefault();setDir(1,0)}
+});
+document.getElementById("playBtn").addEventListener("click",startGame);
+document.getElementById("pauseBtn").addEventListener("click",togglePause);
+document.getElementById("restartBtn").addEventListener("click",restartGame);
+document.getElementById("menuBtn").addEventListener("click",goMenu);
+resize();
+</script>
+</body>
+</html>
